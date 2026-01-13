@@ -48,10 +48,10 @@
     .toast.show { display:block; }
     .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 
-    /* Checkbox roster */
+    /* Static checkbox roster (no JS needed to display) */
     .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
     .check { display:flex; align-items:center; gap:10px; padding:10px; border-radius:12px; border:1px solid #2a3d6a; background:#0b1220; }
-    .check input { width: 18px; height: 18px; }
+    .check input { width: 20px; height: 20px; }
     .check span { font-size: 14px; }
     @media (min-width: 520px) { .checks { grid-template-columns: 1fr 1fr 1fr; } }
   </style>
@@ -85,14 +85,22 @@
     <input id="sTotal" type="number" step="0.01" min="0" placeholder="e.g. 13" />
 
     <label>Who played? (tick all who played)</label>
-    <div id="playersChecks" class="checks"></div>
+    <div class="checks" id="playersChecks">
+      <label class="check"><input type="checkbox" value="VJ"><span>VJ</span></label>
+      <label class="check"><input type="checkbox" value="Dhara"><span>Dhara</span></label>
+      <label class="check"><input type="checkbox" value="Neeta"><span>Neeta</span></label>
+      <label class="check"><input type="checkbox" value="Dipesh"><span>Dipesh</span></label>
+      <label class="check"><input type="checkbox" value="Nitin"><span>Nitin</span></label>
+      <label class="check"><input type="checkbox" value="Niks"><span>Niks</span></label>
+      <label class="check"><input type="checkbox" value="Paras"><span>Paras</span></label>
+    </div>
     <div class="mini">Random attendance is fine. Share is calculated as <span class="code">total ÷ attendees</span>.</div>
 
     <label>Notes (optional)</label>
     <textarea id="sNotes" placeholder="e.g. Off-peak, 2 courts, etc."></textarea>
 
     <div class="btnrow">
-      <button class="primary" id="addSessionBtn">Add session</button>
+      <button class="primary" id="addSessionBtn" type="button">Add session</button>
       <button class="ghost" id="clearSessionBtn" type="button">Clear</button>
     </div>
   </section>
@@ -118,7 +126,16 @@
     <div class="row">
       <div>
         <label>From</label>
-        <select id="pFrom"></select>
+        <select id="pFrom">
+          <option value="">Select…</option>
+          <option value="VJ">VJ</option>
+          <option value="Dhara">Dhara</option>
+          <option value="Neeta">Neeta</option>
+          <option value="Dipesh">Dipesh</option>
+          <option value="Nitin">Nitin</option>
+          <option value="Niks">Niks</option>
+          <option value="Paras">Paras</option>
+        </select>
       </div>
       <div>
         <label>Amount (£)</label>
@@ -130,7 +147,7 @@
     <input id="pNotes" placeholder="e.g. bank transfer" />
 
     <div class="btnrow">
-      <button class="primary" id="addPaymentBtn">Add payment</button>
+      <button class="primary" id="addPaymentBtn" type="button">Add payment</button>
       <button class="ghost" id="clearPaymentBtn" type="button">Clear</button>
     </div>
   </section>
@@ -189,21 +206,19 @@
 
 <footer>
   <div class="footer-inner">
-    <button id="exportBtn">Export JSON</button>
-    <button id="importBtn">Import JSON</button>
-    <button class="danger" id="wipeBtn">Wipe all data</button>
+    <button id="exportBtn" type="button">Export JSON</button>
+    <button id="importBtn" type="button">Import JSON</button>
+    <button class="danger" id="wipeBtn" type="button">Wipe all data</button>
   </div>
 </footer>
 
 <div id="toast" class="toast"></div>
 
 <script>
-  // --- Config ---
   const PLAYERS = ["VJ","Dhara","Neeta","Dipesh","Nitin","Niks","Paras"];
   const PAYEES = new Set(["VJ","Dhara"]);
-  const STORAGE_KEY = "badminton_tracker_v1";
+  const STORAGE_KEY = "badminton_tracker_v2";
 
-  // --- State ---
   let state = loadState();
 
   function loadState() {
@@ -211,20 +226,16 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return { sessions: [], payments: [] };
       const parsed = JSON.parse(raw);
-      if (!parsed.sessions) parsed.sessions = [];
-      if (!parsed.payments) parsed.payments = [];
-      return parsed;
+      return { sessions: parsed.sessions || [], payments: parsed.payments || [] };
     } catch {
       return { sessions: [], payments: [] };
     }
   }
-  function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }
+  function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 
-  // --- Helpers ---
-  const £ = (n) => (Math.round((n + Number.EPSILON)*100)/100).toFixed(2);
+  const money = (n) => (Math.round((n + Number.EPSILON)*100)/100).toFixed(2);
   const todayISO = () => new Date().toISOString().slice(0,10);
+
   function toast(msg) {
     const t = document.getElementById("toast");
     t.textContent = msg;
@@ -232,31 +243,38 @@
     setTimeout(() => t.classList.remove("show"), 1800);
   }
 
+  function uid() {
+    return String(Date.now()) + "_" + Math.random().toString(16).slice(2);
+  }
+
+  function getSelectedPlayers() {
+    return [...document.querySelectorAll("#playersChecks input[type=checkbox]:checked")].map(x => x.value);
+  }
+  function clearSelectedPlayers() {
+    document.querySelectorAll("#playersChecks input[type=checkbox]").forEach(cb => cb.checked = false);
+  }
+
   function computeBalances() {
-    // balances[player] = { VJ: x, Dhara: y } amounts owed (positive means owes)
     const balances = {};
     for (const p of PLAYERS) balances[p] = { VJ: 0, Dhara: 0 };
 
-    // Sessions create debt from each attendee (except the payer) to payer
     for (const s of state.sessions) {
       if (!PAYEES.has(s.payer)) continue;
       const attendees = s.attendees || [];
       if (!attendees.length) continue;
-      const share = s.total / attendees.length;
 
+      const share = s.total / attendees.length;
       for (const p of attendees) {
-        if (p === s.payer) continue; // payer doesn't owe themselves
+        if (p === s.payer) continue;
         balances[p][s.payer] += share;
       }
     }
 
-    // Payments reduce what the person owes to that payee
     for (const pay of state.payments) {
       if (!PAYEES.has(pay.to)) continue;
       balances[pay.from][pay.to] -= pay.amount;
     }
 
-    // Clamp tiny float noise
     for (const p of PLAYERS) {
       for (const payee of ["VJ","Dhara"]) {
         if (Math.abs(balances[p][payee]) < 0.005) balances[p][payee] = 0;
@@ -265,47 +283,10 @@
     return balances;
   }
 
-  // --- Checkbox roster ---
-  let selectedPlayers = new Set();
-
-  function renderPlayersChecks() {
-    const box = document.getElementById("playersChecks");
-    box.innerHTML = "";
-    for (const p of PLAYERS) {
-      const label = document.createElement("label");
-      label.className = "check";
-
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = selectedPlayers.has(p);
-      cb.onchange = () => {
-        if (cb.checked) selectedPlayers.add(p);
-        else selectedPlayers.delete(p);
-      };
-
-      const text = document.createElement("span");
-      text.textContent = p;
-
-      label.appendChild(cb);
-      label.appendChild(text);
-      box.appendChild(label);
-    }
-  }
-
-  function renderPaymentsFromOptions() {
-    const sel = document.getElementById("pFrom");
-    sel.innerHTML = "";
-    for (const p of PLAYERS) {
-      const opt = document.createElement("option");
-      opt.value = p; opt.textContent = p;
-      sel.appendChild(opt);
-    }
-  }
-
   function renderTables() {
     const balances = computeBalances();
 
-    // Summary table
+    // Summary
     const tbody = document.querySelector("#summaryTable tbody");
     tbody.innerHTML = "";
     for (const p of PLAYERS) {
@@ -316,61 +297,58 @@
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${p}</td>
-        <td class="${owesVJ>0?'neg':owesVJ<0?'pos':'zero'}">£${£(owesVJ)}</td>
-        <td class="${owesDh>0?'neg':owesDh<0?'pos':'zero'}">£${£(owesDh)}</td>
-        <td class="${total>0?'neg':total<0?'pos':'zero'}">£${£(total)}</td>
+        <td class="${owesVJ>0?'neg':owesVJ<0?'pos':'zero'}">£${money(owesVJ)}</td>
+        <td class="${owesDh>0?'neg':owesDh<0?'pos':'zero'}">£${money(owesDh)}</td>
+        <td class="${total>0?'neg':total<0?'pos':'zero'}">£${money(total)}</td>
       `;
       tbody.appendChild(tr);
     }
 
-    // Suggested next payer (most owing)
+    // Suggested next payer
     const totals = PLAYERS.map(p => ({ p, t: balances[p].VJ + balances[p].Dhara }));
     const mostOwing = totals.filter(x => x.t > 0.005).sort((a,b)=> b.t - a.t)[0];
     document.getElementById("suggestPayer").textContent =
-      mostOwing ? `${mostOwing.p} (£${£(mostOwing.t)})` : "—";
+      mostOwing ? `${mostOwing.p} (£${money(mostOwing.t)})` : "—";
 
-    // Suggested collector (most owed: VJ or Dhara)
+    // Suggested collector
     const owedToVJ = PLAYERS.reduce((acc,p)=> acc + (balances[p].VJ||0), 0);
     const owedToDh = PLAYERS.reduce((acc,p)=> acc + (balances[p].Dhara||0), 0);
     const collector = owedToVJ >= owedToDh ? {p:"VJ", t:owedToVJ} : {p:"Dhara", t:owedToDh};
     document.getElementById("suggestCollector").textContent =
-      (Math.abs(collector.t) > 0.005) ? `${collector.p} (£${£(collector.t)})` : "—";
+      (Math.abs(collector.t) > 0.005) ? `${collector.p} (£${money(collector.t)})` : "—";
 
-    // Sessions table
+    // Sessions
     const sbody = document.querySelector("#sessionsTable tbody");
     sbody.innerHTML = "";
-    const sessionsSorted = [...state.sessions].sort((a,b)=> a.date.localeCompare(b.date));
-    sessionsSorted.forEach((s) => {
-      const share = (s.attendees?.length) ? s.total / s.attendees.length : 0;
+    [...state.sessions].sort((a,b)=> a.date.localeCompare(b.date)).forEach(s => {
+      const share = s.attendees?.length ? (s.total / s.attendees.length) : 0;
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${s.date}</td>
         <td>${s.payer}</td>
-        <td>£${£(s.total)}</td>
+        <td>£${money(s.total)}</td>
         <td>${s.attendees?.length || 0}</td>
-        <td>£${£(share)}</td>
-        <td><button class="danger" data-del-session="${s.id}">Delete</button></td>
+        <td>£${money(share)}</td>
+        <td><button class="danger" data-del-session="${s.id}" type="button">Delete</button></td>
       `;
       sbody.appendChild(tr);
     });
 
-    // Payments table
+    // Payments
     const pbody = document.querySelector("#paymentsTable tbody");
     pbody.innerHTML = "";
-    const paymentsSorted = [...state.payments].sort((a,b)=> a.date.localeCompare(b.date));
-    paymentsSorted.forEach(pay => {
+    [...state.payments].sort((a,b)=> a.date.localeCompare(b.date)).forEach(pay => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${pay.date}</td>
         <td>${pay.from}</td>
         <td>${pay.to}</td>
-        <td>£${£(pay.amount)}</td>
-        <td><button class="danger" data-del-payment="${pay.id}">Delete</button></td>
+        <td>£${money(pay.amount)}</td>
+        <td><button class="danger" data-del-payment="${pay.id}" type="button">Delete</button></td>
       `;
       pbody.appendChild(tr);
     });
 
-    // Bind delete buttons
     document.querySelectorAll("[data-del-session]").forEach(btn => {
       btn.onclick = () => {
         const id = btn.getAttribute("data-del-session");
@@ -387,51 +365,41 @@
     });
   }
 
-  function render() {
-    renderPlayersChecks();
-    renderPaymentsFromOptions();
-    renderTables();
-  }
-
-  // --- Add session ---
   document.getElementById("addSessionBtn").onclick = () => {
     const date = document.getElementById("sDate").value || "";
     const payer = document.getElementById("sPayer").value || "";
     const total = parseFloat(document.getElementById("sTotal").value || "0");
     const notes = document.getElementById("sNotes").value || "";
+    const attendees = getSelectedPlayers();
 
     if (!date) return toast("Pick a date");
     if (!PAYEES.has(payer)) return toast("Payer must be VJ or Dhara");
     if (!(total > 0)) return toast("Enter a valid total");
-    const attendees = [...selectedPlayers];
     if (!attendees.length) return toast("Tick who played");
 
-    const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
-    state.sessions.push({ id, date, payer, total, attendees, notes });
+    state.sessions.push({ id: uid(), date, payer, total, attendees, notes });
     saveState();
 
-    // reset form
-    document.getElementById("sDate").value = "";
+    // reset
+    document.getElementById("sDate").value = todayISO();
     document.getElementById("sPayer").value = "";
     document.getElementById("sTotal").value = "";
     document.getElementById("sNotes").value = "";
-    selectedPlayers = new Set();
-    renderPlayersChecks();
+    clearSelectedPlayers();
+
     renderTables();
     toast("Session added");
   };
 
   document.getElementById("clearSessionBtn").onclick = () => {
-    document.getElementById("sDate").value = "";
+    document.getElementById("sDate").value = todayISO();
     document.getElementById("sPayer").value = "";
     document.getElementById("sTotal").value = "";
     document.getElementById("sNotes").value = "";
-    selectedPlayers = new Set();
-    renderPlayersChecks();
+    clearSelectedPlayers();
     toast("Cleared");
   };
 
-  // --- Add payment ---
   document.getElementById("addPaymentBtn").onclick = () => {
     const date = document.getElementById("pDate").value || "";
     const from = document.getElementById("pFrom").value || "";
@@ -444,28 +412,29 @@
     if (!PAYEES.has(to)) return toast("To must be VJ or Dhara");
     if (!(amount > 0)) return toast("Enter a valid amount");
 
-    const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
-    state.payments.push({ id, date, from, to, amount, notes });
+    state.payments.push({ id: uid(), date, from, to, amount, notes });
     saveState();
 
     // reset
-    document.getElementById("pDate").value = "";
+    document.getElementById("pDate").value = todayISO();
+    document.getElementById("pFrom").value = "";
     document.getElementById("pTo").value = "";
     document.getElementById("pAmt").value = "";
     document.getElementById("pNotes").value = "";
+
     renderTables();
     toast("Payment added");
   };
 
   document.getElementById("clearPaymentBtn").onclick = () => {
-    document.getElementById("pDate").value = "";
+    document.getElementById("pDate").value = todayISO();
+    document.getElementById("pFrom").value = "";
     document.getElementById("pTo").value = "";
     document.getElementById("pAmt").value = "";
     document.getElementById("pNotes").value = "";
     toast("Cleared");
   };
 
-  // --- Export/Import/Wipe ---
   document.getElementById("exportBtn").onclick = () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -510,8 +479,7 @@
   document.getElementById("sDate").value = todayISO();
   document.getElementById("pDate").value = todayISO();
 
-  // Initial render
-  render();
+  renderTables();
 </script>
 </body>
 </html>
