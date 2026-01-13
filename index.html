@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Badminton Money Tracker</title>
+  <title>Badminton Money Tracker (CSV + editable lists)</title>
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
     body { margin: 0; background:#0b1220; color:#e9eefb; }
     header { padding: 16px 18px; background:#0f1b33; position: sticky; top:0; border-bottom:1px solid #203055;}
     h1 { margin:0; font-size: 18px; }
-    main { padding: 16px 18px 80px; max-width: 980px; margin: 0 auto; }
+    main { padding: 16px 18px 96px; max-width: 980px; margin: 0 auto; }
     .grid { display: grid; gap: 14px; }
     @media (min-width: 920px) { .grid { grid-template-columns: 1fr 1fr; } }
     .card { background:#0f1b33; border:1px solid #203055; border-radius: 14px; padding: 14px; }
@@ -27,11 +27,12 @@
     button.primary { background:#2a5bd7; border-color:#2a5bd7; }
     button.danger { background:#c03636; border-color:#c03636; }
     button.ghost { background:transparent; }
+    button.small { padding:8px 10px; border-radius:10px; font-size:12px; }
     table { width:100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
     th, td { text-align:left; padding:10px 8px; border-bottom:1px solid #203055; vertical-align: top; }
     th { font-size: 12px; opacity:.9; }
-    .pos { color:#5ee38f; font-weight:700; }
-    .neg { color:#ff8f8f; font-weight:700; }
+    .good { color:#5ee38f; font-weight:800; }  /* credit */
+    .bad  { color:#ff8f8f; font-weight:800; }  /* debt */
     .zero { color:#cbd7ff; font-weight:700; opacity:.9; }
     .muted { opacity:.8; font-size: 12px; }
     .mini { font-size: 12px; opacity:.85; }
@@ -41,28 +42,34 @@
       position: fixed; left:0; right:0; bottom:0; background:#0f1b33; border-top:1px solid #203055;
       padding: 10px 18px;
     }
-    .footer-inner { max-width: 980px; margin: 0 auto; display:flex; gap:10px; }
+    .footer-inner { max-width: 980px; margin: 0 auto; display:flex; gap:10px; flex-wrap: wrap; }
     .footer-inner button { width:auto; }
-    .toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%); background:#102043; border:1px solid #2a3d6a;
-             padding:10px 12px; border-radius: 12px; display:none; }
+    .toast { position: fixed; bottom: 86px; left: 50%; transform: translateX(-50%); background:#102043; border:1px solid #2a3d6a;
+             padding:10px 12px; border-radius: 12px; display:none; z-index: 50; }
     .toast.show { display:block; }
     .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 
-    /* Static checkbox roster */
+    /* Player checkboxes (generated from player list) */
     .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
     .check { display:flex; align-items:center; gap:10px; padding:10px; border-radius:12px; border:1px solid #2a3d6a; background:#0b1220; }
     .check input { width: 20px; height: 20px; }
     .check span { font-size: 14px; }
     @media (min-width: 520px) { .checks { grid-template-columns: 1fr 1fr 1fr; } }
+
+    .pilllist { display:flex; flex-wrap: wrap; gap:8px; margin-top:10px; }
+    .pill { border:1px solid #2a3d6a; background:#0b1220; border-radius:999px; padding:6px 10px; font-size:12px; display:flex; gap:8px; align-items:center; }
+    .pill button { width:auto; padding:4px 8px; font-size:12px; border-radius:999px; }
   </style>
 </head>
+
 <body>
 <header>
-  <h1>Badminton Money Tracker <span class="tag">VJ/Dhara payees</span> <span class="tag">Equal split</span></h1>
+  <h1>Badminton Money Tracker <span class="tag">Editable lists</span> <span class="tag">CSV import/export</span></h1>
   <div class="muted">Sessions + payments → auto balances. Data stored locally in your browser.</div>
 </header>
 
 <main class="grid">
+  <!-- Add Session -->
   <section class="card">
     <h2>Add Session</h2>
 
@@ -73,11 +80,7 @@
       </div>
       <div>
         <label>Payer (paid hall)</label>
-        <select id="sPayer">
-          <option value="">Select…</option>
-          <option value="VJ">VJ</option>
-          <option value="Dhara">Dhara</option>
-        </select>
+        <select id="sPayer"></select>
       </div>
     </div>
 
@@ -85,16 +88,8 @@
     <input id="sTotal" type="number" step="0.01" min="0" placeholder="e.g. 13" />
 
     <label>Who played? (tick all who played)</label>
-    <div class="checks" id="playersChecks">
-      <label class="check"><input type="checkbox" value="VJ"><span>VJ</span></label>
-      <label class="check"><input type="checkbox" value="Dhara"><span>Dhara</span></label>
-      <label class="check"><input type="checkbox" value="Neeta"><span>Neeta</span></label>
-      <label class="check"><input type="checkbox" value="Dipesh"><span>Dipesh</span></label>
-      <label class="check"><input type="checkbox" value="Nitin"><span>Nitin</span></label>
-      <label class="check"><input type="checkbox" value="Niks"><span>Niks</span></label>
-      <label class="check"><input type="checkbox" value="Paras"><span>Paras</span></label>
-    </div>
-    <div class="mini">Random attendance is fine. Share is calculated as <span class="code">total ÷ attendees</span>.</div>
+    <div id="playersChecks" class="checks"></div>
+    <div class="mini">Share is calculated as <span class="code">total ÷ attendees</span>.</div>
 
     <label>Notes (optional)</label>
     <textarea id="sNotes" placeholder="e.g. Off-peak, 2 courts, etc."></textarea>
@@ -105,6 +100,7 @@
     </div>
   </section>
 
+  <!-- Add Payment -->
   <section class="card">
     <h2>Add Payment</h2>
 
@@ -114,28 +110,15 @@
         <input id="pDate" type="date" />
       </div>
       <div>
-        <label>To (must be VJ or Dhara)</label>
-        <select id="pTo">
-          <option value="">Select…</option>
-          <option value="VJ">VJ</option>
-          <option value="Dhara">Dhara</option>
-        </select>
+        <label>To (payee)</label>
+        <select id="pTo"></select>
       </div>
     </div>
 
     <div class="row">
       <div>
         <label>From</label>
-        <select id="pFrom">
-          <option value="">Select…</option>
-          <option value="VJ">VJ</option>
-          <option value="Dhara">Dhara</option>
-          <option value="Neeta">Neeta</option>
-          <option value="Dipesh">Dipesh</option>
-          <option value="Nitin">Nitin</option>
-          <option value="Niks">Niks</option>
-          <option value="Paras">Paras</option>
-        </select>
+        <select id="pFrom"></select>
       </div>
       <div>
         <label>Amount (£)</label>
@@ -152,19 +135,22 @@
     </div>
   </section>
 
+  <!-- Summary -->
   <section class="card" style="grid-column: 1 / -1;">
-    <h2>Summary (what you actually care about)</h2>
+    <h2>Summary</h2>
     <div class="muted">
-      “Total Owed” is the amount the player still needs to pay out (credits do not cancel other debts). VJ↔Dhara is netted off automatically.
+      <span class="bad">Red</span> = you owe money (debt). &nbsp; <span class="good">Green</span> = you have credit (they owe you / you paid extra).<br/>
+      “Total To Pay” is debts only (credits do not cancel other payees’ debts). Payees are not netted together except payee↔payee (e.g. VJ↔Dhara) which is netted.
     </div>
 
     <table id="summaryTable">
       <thead>
         <tr>
           <th>Player</th>
-          <th>Owes VJ</th>
-          <th>Owes Dhara</th>
-          <th>Total Owed</th>
+          <th>VJ balance</th>
+          <th>Dhara balance</th>
+          <th>Total To Pay</th>
+          <th>Total Credit</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -174,19 +160,20 @@
 
     <div class="row">
       <div class="card" style="padding:12px; border-radius:12px;">
-        <div class="mini">Suggested next payer (most owing)</div>
+        <div class="mini">Suggested next payer (highest Total To Pay)</div>
         <div id="suggestPayer" style="font-size:18px; font-weight:800;">—</div>
       </div>
       <div class="card" style="padding:12px; border-radius:12px;">
-        <div class="mini">Suggested collector (most owed)</div>
+        <div class="mini">Suggested collector (most owed, debts only)</div>
         <div id="suggestCollector" style="font-size:18px; font-weight:800;">—</div>
       </div>
     </div>
 
     <div class="sep"></div>
-    <div class="mini" id="vjDharaNetLine">Net between VJ ↔ Dhara: —</div>
+    <div class="mini" id="payeeNetLine">Net between payees: —</div>
   </section>
 
+  <!-- Sessions -->
   <section class="card">
     <h2>Sessions</h2>
     <div class="muted">Tap “Delete” to remove a mistaken entry.</div>
@@ -198,9 +185,10 @@
     </table>
   </section>
 
+  <!-- Payments -->
   <section class="card">
     <h2>Payments</h2>
-    <div class="muted">Only real transfers (From → VJ/Dhara).</div>
+    <div class="muted">Only real transfers (From → Payee).</div>
     <table id="paymentsTable">
       <thead>
         <tr><th>Date</th><th>From</th><th>To</th><th>Amount</th><th></th></tr>
@@ -208,12 +196,50 @@
       <tbody></tbody>
     </table>
   </section>
+
+  <!-- Edit player list -->
+  <section class="card" style="grid-column: 1 / -1;">
+    <h2>Edit player list</h2>
+    <div class="muted">Add/remove players. Removing a player will also remove them from past sessions’ attendee lists and from “From” payments.</div>
+
+    <div class="row">
+      <div>
+        <label>Add player name</label>
+        <input id="newPlayerName" placeholder="e.g. Sanjay" />
+      </div>
+      <div style="display:flex; align-items:end;">
+        <button class="primary" id="addPlayerBtn" type="button">Add player</button>
+      </div>
+    </div>
+
+    <div class="mini" style="margin-top:10px;">Current players</div>
+    <div id="playersPills" class="pilllist"></div>
+  </section>
+
+  <!-- Edit payee list -->
+  <section class="card" style="grid-column: 1 / -1;">
+    <h2>Edit payee list</h2>
+    <div class="muted">Payees are the people who pay the hall and receive transfers. Payees must be players.</div>
+
+    <div class="row">
+      <div>
+        <label>Add payee (choose a player)</label>
+        <select id="addPayeeSelect"></select>
+      </div>
+      <div style="display:flex; align-items:end;">
+        <button class="primary" id="addPayeeBtn" type="button">Add payee</button>
+      </div>
+    </div>
+
+    <div class="mini" style="margin-top:10px;">Current payees</div>
+    <div id="payeesPills" class="pilllist"></div>
+  </section>
 </main>
 
 <footer>
   <div class="footer-inner">
-    <button id="exportBtn" type="button">Export JSON</button>
-    <button id="importBtn" type="button">Import JSON</button>
+    <button id="exportCsvBtn" type="button">Export CSV</button>
+    <button id="importCsvBtn" type="button">Import CSV</button>
     <button class="danger" id="wipeBtn" type="button">Wipe all data</button>
   </div>
 </footer>
@@ -221,24 +247,48 @@
 <div id="toast" class="toast"></div>
 
 <script>
-  const PLAYERS = ["VJ","Dhara","Neeta","Dipesh","Nitin","Niks","Paras"];
-  const PAYEES = new Set(["VJ","Dhara"]);
-  const STORAGE_KEY = "badminton_tracker_v4";
+  // ----------------------------
+  // Storage + defaults
+  // ----------------------------
+  const STORAGE_KEY = "badminton_tracker_v5";
+
+  function defaultState() {
+    return {
+      players: ["VJ","Dhara","Neeta","Dipesh","Nitin","Niks","Paras"],
+      payees: ["VJ","Dhara"],
+      sessions: [],
+      payments: []
+    };
+  }
 
   let state = loadState();
 
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { sessions: [], payments: [] };
+      if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
-      return { sessions: parsed.sessions || [], payments: parsed.payments || [] };
+
+      const s = defaultState();
+      if (Array.isArray(parsed.players) && parsed.players.length) s.players = uniqueNames(parsed.players);
+      if (Array.isArray(parsed.payees) && parsed.payees.length) s.payees = uniqueNames(parsed.payees).filter(p => s.players.includes(p));
+      if (!s.payees.length) s.payees = ["VJ","Dhara"].filter(p => s.players.includes(p));
+
+      s.sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
+      s.payments = Array.isArray(parsed.payments) ? parsed.payments : [];
+      return s;
     } catch {
-      return { sessions: [], payments: [] };
+      return defaultState();
     }
   }
-  function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  // ----------------------------
+  // Helpers
+  // ----------------------------
   const money = (n) => (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
   const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -249,185 +299,376 @@
     setTimeout(() => t.classList.remove("show"), 1800);
   }
 
-  function uid() { return String(Date.now()) + "_" + Math.random().toString(16).slice(2); }
-
-  function getSelectedPlayers() {
-    return [...document.querySelectorAll("#playersChecks input[type=checkbox]:checked")].map(x => x.value);
-  }
-  function clearSelectedPlayers() {
-    document.querySelectorAll("#playersChecks input[type=checkbox]").forEach(cb => cb.checked = false);
+  function uid() {
+    return String(Date.now()) + "_" + Math.random().toString(16).slice(2);
   }
 
+  function cleanName(s) {
+    return String(s || "").trim();
+  }
+
+  function uniqueNames(arr) {
+    const out = [];
+    const seen = new Set();
+    for (const x of arr.map(cleanName)) {
+      if (!x) continue;
+      const key = x.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(x);
+    }
+    return out;
+  }
+
+  // ----------------------------
+  // UI rendering
+  // ----------------------------
+  function renderAll() {
+    // Default dates should be current date
+    if (!document.getElementById("sDate").value) document.getElementById("sDate").value = todayISO();
+    if (!document.getElementById("pDate").value) document.getElementById("pDate").value = todayISO();
+
+    renderDropdowns();
+    renderPlayerCheckboxes();
+    renderEditLists();
+    renderTables();
+  }
+
+  function renderDropdowns() {
+    const sPayer = document.getElementById("sPayer");
+    const pTo = document.getElementById("pTo");
+    const pFrom = document.getElementById("pFrom");
+    const addPayeeSelect = document.getElementById("addPayeeSelect");
+
+    sPayer.innerHTML = `<option value="">Select…</option>`;
+    pTo.innerHTML = `<option value="">Select…</option>`;
+    pFrom.innerHTML = `<option value="">Select…</option>`;
+    addPayeeSelect.innerHTML = `<option value="">Select…</option>`;
+
+    // Payee dropdowns
+    for (const payee of state.payees) {
+      const opt1 = document.createElement("option");
+      opt1.value = payee; opt1.textContent = payee;
+      sPayer.appendChild(opt1);
+
+      const opt2 = document.createElement("option");
+      opt2.value = payee; opt2.textContent = payee;
+      pTo.appendChild(opt2);
+    }
+
+    // From dropdown: any player
+    for (const p of state.players) {
+      const opt = document.createElement("option");
+      opt.value = p; opt.textContent = p;
+      pFrom.appendChild(opt);
+
+      const optP = document.createElement("option");
+      optP.value = p; optP.textContent = p;
+      addPayeeSelect.appendChild(optP);
+    }
+  }
+
+  function renderPlayerCheckboxes() {
+    const box = document.getElementById("playersChecks");
+    const selected = new Set(
+      [...box.querySelectorAll("input[type=checkbox]:checked")].map(cb => cb.value)
+    );
+    box.innerHTML = "";
+
+    for (const p of state.players) {
+      const label = document.createElement("label");
+      label.className = "check";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = p;
+      cb.checked = selected.has(p);
+
+      const sp = document.createElement("span");
+      sp.textContent = p;
+
+      label.appendChild(cb);
+      label.appendChild(sp);
+      box.appendChild(label);
+    }
+  }
+
+  function renderEditLists() {
+    const playersPills = document.getElementById("playersPills");
+    const payeesPills = document.getElementById("payeesPills");
+
+    playersPills.innerHTML = "";
+    for (const p of state.players) {
+      const pill = document.createElement("div");
+      pill.className = "pill";
+      pill.innerHTML = `<span>${escapeHtml(p)}</span>`;
+      const btn = document.createElement("button");
+      btn.className = "danger small";
+      btn.type = "button";
+      btn.textContent = "Remove";
+      btn.onclick = () => removePlayer(p);
+      pill.appendChild(btn);
+      playersPills.appendChild(pill);
+    }
+
+    payeesPills.innerHTML = "";
+    for (const payee of state.payees) {
+      const pill = document.createElement("div");
+      pill.className = "pill";
+      pill.innerHTML = `<span>${escapeHtml(payee)}</span>`;
+      const btn = document.createElement("button");
+      btn.className = "danger small";
+      btn.type = "button";
+      btn.textContent = "Remove";
+      btn.onclick = () => removePayee(payee);
+      pill.appendChild(btn);
+      payeesPills.appendChild(pill);
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  // ----------------------------
+  // Balances logic (with your rules)
+  // ----------------------------
   function computeBalances() {
+    // balances[player][payee] = +debt (player owes payee), -credit (player has credit with payee)
     const balances = {};
-    for (const p of PLAYERS) balances[p] = { VJ: 0, Dhara: 0 };
+    for (const p of state.players) {
+      balances[p] = {};
+      for (const payee of state.payees) balances[p][payee] = 0;
+    }
 
-    // 1) Sessions create debt from each attendee (except payer) to payer
+    // Sessions: attendee debts to payer (payer must be a payee)
     for (const s of state.sessions) {
-      if (!PAYEES.has(s.payer)) continue;
-      const attendees = s.attendees || [];
-      if (!attendees.length) continue;
+      if (!state.payees.includes(s.payer)) continue;
+      const attendees = Array.isArray(s.attendees) ? s.attendees : [];
+      const filtered = attendees.filter(a => state.players.includes(a));
+      if (!filtered.length) continue;
 
-      const share = s.total / attendees.length;
-      for (const p of attendees) {
-        if (p === s.payer) continue;
+      const share = Number(s.total) / filtered.length;
+      for (const p of filtered) {
+        if (p === s.payer) continue; // payer doesn't owe themselves
+        if (!(p in balances)) continue;
         balances[p][s.payer] += share;
       }
     }
 
-    // 2) Payments reduce what the person owes to that payee
+    // Payments: reduce debt to the payee (or create credit if overpaid)
     for (const pay of state.payments) {
-      if (!PAYEES.has(pay.to)) continue;
-      balances[pay.from][pay.to] -= pay.amount;
+      if (!state.payees.includes(pay.to)) continue;
+      if (!state.players.includes(pay.from)) continue;
+      if (!(pay.from in balances)) continue;
+      balances[pay.from][pay.to] -= Number(pay.amount);
     }
 
-    // 3) Clamp tiny float noise
-    for (const p of PLAYERS) {
-      for (const payee of ["VJ","Dhara"]) {
+    // Clamp float noise
+    for (const p of state.players) {
+      for (const payee of state.payees) {
         if (Math.abs(balances[p][payee]) < 0.005) balances[p][payee] = 0;
       }
     }
 
-    // 4) Net off between VJ and Dhara only
-    const dhOwesVJ = balances["Dhara"]["VJ"] || 0;
-    const vjOwesDh = balances["VJ"]["Dhara"] || 0;
-    const net = dhOwesVJ - vjOwesDh; // +ve => Dhara owes VJ overall
+    // Net off BETWEEN PAYEES ONLY (example: VJ ↔ Dhara if both are payees)
+    // This does NOT net credits/debts for normal players across different payees.
+    // It only nets the payees' mutual balances (because in reality they can settle between themselves).
+    if (state.payees.length >= 2) {
+      for (let i = 0; i < state.payees.length; i++) {
+        for (let j = i + 1; j < state.payees.length; j++) {
+          const A = state.payees[i];
+          const B = state.payees[j];
+          if (!balances[A] || !balances[B]) continue;
 
-    if (Math.abs(net) < 0.005) {
-      balances["Dhara"]["VJ"] = 0;
-      balances["VJ"]["Dhara"] = 0;
-    } else if (net > 0) {
-      balances["Dhara"]["VJ"] = net;
-      balances["VJ"]["Dhara"] = 0;
-    } else {
-      balances["VJ"]["Dhara"] = -net;
-      balances["Dhara"]["VJ"] = 0;
+          const aOwesB = balances[A][B] || 0; // A owes B
+          const bOwesA = balances[B][A] || 0; // B owes A
+          const net = aOwesB - bOwesA;
+
+          if (Math.abs(net) < 0.005) {
+            balances[A][B] = 0;
+            balances[B][A] = 0;
+          } else if (net > 0) {
+            balances[A][B] = net;
+            balances[B][A] = 0;
+          } else {
+            balances[B][A] = -net;
+            balances[A][B] = 0;
+          }
+        }
+      }
     }
 
     return balances;
   }
 
-  // Total owed should NOT be netted across different payees.
-  // Credits with one payee do not cancel debts to the other payee.
-  function totalOwedForPlayer(balances, player) {
-    const owesVJ = balances[player].VJ || 0;
-    const owesDh = balances[player].Dhara || 0;
-    return Math.max(0, owesVJ) + Math.max(0, owesDh);
+  function totalToPay(balances, player) {
+    // Sum of positive debts only (credits don't cancel other payees)
+    let sum = 0;
+    for (const payee of state.payees) sum += Math.max(0, balances[player]?.[payee] || 0);
+    return sum;
   }
 
+  function totalCredit(balances, player) {
+    // Sum of credits (absolute) across payees
+    let sum = 0;
+    for (const payee of state.payees) sum += Math.max(0, -(balances[player]?.[payee] || 0));
+    return sum;
+  }
+
+  // ----------------------------
+  // Tables
+  // ----------------------------
   function renderTables() {
     const balances = computeBalances();
 
-    // Summary
+    // Summary rows
     const tbody = document.querySelector("#summaryTable tbody");
     tbody.innerHTML = "";
-    for (const p of PLAYERS) {
-      const owesVJ = balances[p].VJ;
-      const owesDh = balances[p].Dhara;
-      const total = totalOwedForPlayer(balances, p);
 
+    for (const p of state.players) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${p}</td>
-        <td class="${owesVJ>0?'neg':owesVJ<0?'pos':'zero'}">£${money(owesVJ)}</td>
-        <td class="${owesDh>0?'neg':owesDh<0?'pos':'zero'}">£${money(owesDh)}</td>
-        <td class="${total>0?'neg':'zero'}">£${money(total)}</td>
-      `;
+      const cols = [];
+
+      cols.push(`<td>${escapeHtml(p)}</td>`);
+
+      // Payee columns (dynamic, but requirement asked about minus sign removal & headers)
+      // We keep two payee columns visually (if you add more payees, we still show all in columns by rendering only first two + total columns),
+      // but better UX: show first two payees in table and the rest folded into totals.
+      const payeeA = state.payees[0] || null;
+      const payeeB = state.payees[1] || null;
+
+      cols.push(renderBalanceCell(balances, p, payeeA));
+      cols.push(renderBalanceCell(balances, p, payeeB));
+
+      const tPay = totalToPay(balances, p);
+      const tCred = totalCredit(balances, p);
+
+      cols.push(`<td class="${tPay>0?'bad':'zero'}">£${money(tPay)}</td>`);
+      cols.push(`<td class="${tCred>0?'good':'zero'}">£${money(tCred)}</td>`);
+
+      tr.innerHTML = cols.join("");
       tbody.appendChild(tr);
     }
 
-    // Suggested next payer (based on positive owed only)
-    const totals = PLAYERS.map(p => ({ p, t: totalOwedForPlayer(balances, p) }));
+    // Suggested next payer
+    const totals = state.players.map(p => ({ p, t: totalToPay(balances, p) }));
     const mostOwing = totals.filter(x => x.t > 0.005).sort((a,b)=> b.t - a.t)[0];
     document.getElementById("suggestPayer").textContent =
       mostOwing ? `${mostOwing.p} (£${money(mostOwing.t)})` : "—";
 
-    // Suggested collector (who is most owed overall)
-    // IMPORTANT: collectors should not get reduced by credits (negative balances).
-    const owedToVJ = PLAYERS.reduce((acc,p)=> acc + Math.max(0, balances[p].VJ||0), 0);
-    const owedToDh = PLAYERS.reduce((acc,p)=> acc + Math.max(0, balances[p].Dhara||0), 0);
-    const collector = owedToVJ >= owedToDh ? {p:"VJ", t:owedToVJ} : {p:"Dhara", t:owedToDh};
+    // Suggested collector (debts only)
+    const collectorSums = state.payees.map(payee => ({
+      payee,
+      t: state.players.reduce((acc,p)=> acc + Math.max(0, balances[p]?.[payee] || 0), 0)
+    }));
+    collectorSums.sort((a,b)=> b.t - a.t);
+    const topCollector = collectorSums[0];
     document.getElementById("suggestCollector").textContent =
-      (collector.t > 0.005) ? `${collector.p} (£${money(collector.t)})` : "—";
+      topCollector && topCollector.t > 0.005 ? `${topCollector.payee} (£${money(topCollector.t)})` : "—";
 
-    // Net line between VJ and Dhara (after netting)
-    const dhOwesVJ = balances["Dhara"]["VJ"] || 0;
-    const vjOwesDh = balances["VJ"]["Dhara"] || 0;
-    let netText = "—";
-    if (dhOwesVJ > 0.005) netText = `Dhara owes VJ £${money(dhOwesVJ)}`;
-    else if (vjOwesDh > 0.005) netText = `VJ owes Dhara £${money(vjOwesDh)}`;
-    document.getElementById("vjDharaNetLine").textContent = `Net between VJ ↔ Dhara: ${netText}`;
+    // Net line between payees (show any non-zero net)
+    const netBits = [];
+    for (const A of state.payees) {
+      for (const B of state.payees) {
+        if (A === B) continue;
+        const v = balances[A]?.[B] || 0; // A owes B
+        if (v > 0.005) netBits.push(`${A} owes ${B} £${money(v)}`);
+      }
+    }
+    document.getElementById("payeeNetLine").textContent =
+      `Net between payees: ${netBits.length ? netBits.join(" · ") : "—"}`;
 
-    // Sessions
+    // Sessions table
     const sbody = document.querySelector("#sessionsTable tbody");
     sbody.innerHTML = "";
-    [...state.sessions].sort((a,b)=> a.date.localeCompare(b.date)).forEach(s => {
-      const share = s.attendees?.length ? (s.total / s.attendees.length) : 0;
+    [...state.sessions].sort((a,b)=> String(a.date).localeCompare(String(b.date))).forEach(s => {
+      const attendees = Array.isArray(s.attendees) ? s.attendees.filter(x => state.players.includes(x)) : [];
+      const share = attendees.length ? (Number(s.total) / attendees.length) : 0;
+
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${s.date}</td>
-        <td>${s.payer}</td>
-        <td>£${money(s.total)}</td>
-        <td>${s.attendees?.length || 0}</td>
+        <td>${escapeHtml(s.date || "")}</td>
+        <td>${escapeHtml(s.payer || "")}</td>
+        <td>£${money(Number(s.total)||0)}</td>
+        <td>${attendees.length}</td>
         <td>£${money(share)}</td>
-        <td><button class="danger" data-del-session="${s.id}" type="button">Delete</button></td>
+        <td><button class="danger small" data-del-session="${escapeHtml(s.id)}" type="button">Delete</button></td>
       `;
       sbody.appendChild(tr);
     });
 
-    // Payments
+    // Payments table
     const pbody = document.querySelector("#paymentsTable tbody");
     pbody.innerHTML = "";
-    [...state.payments].sort((a,b)=> a.date.localeCompare(b.date)).forEach(pay => {
+    [...state.payments].sort((a,b)=> String(a.date).localeCompare(String(b.date))).forEach(pay => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${pay.date}</td>
-        <td>${pay.from}</td>
-        <td>${pay.to}</td>
-        <td>£${money(pay.amount)}</td>
-        <td><button class="danger" data-del-payment="${pay.id}" type="button">Delete</button></td>
+        <td>${escapeHtml(pay.date || "")}</td>
+        <td>${escapeHtml(pay.from || "")}</td>
+        <td>${escapeHtml(pay.to || "")}</td>
+        <td>£${money(Number(pay.amount)||0)}</td>
+        <td><button class="danger small" data-del-payment="${escapeHtml(pay.id)}" type="button">Delete</button></td>
       `;
       pbody.appendChild(tr);
     });
 
+    // Delete handlers
     document.querySelectorAll("[data-del-session]").forEach(btn => {
       btn.onclick = () => {
         const id = btn.getAttribute("data-del-session");
         state.sessions = state.sessions.filter(s => s.id !== id);
-        saveState(); renderTables(); toast("Session deleted");
+        saveState(); renderAll(); toast("Session deleted");
       };
     });
     document.querySelectorAll("[data-del-payment]").forEach(btn => {
       btn.onclick = () => {
         const id = btn.getAttribute("data-del-payment");
         state.payments = state.payments.filter(p => p.id !== id);
-        saveState(); renderTables(); toast("Payment deleted");
+        saveState(); renderAll(); toast("Payment deleted");
       };
     });
   }
 
+  function renderBalanceCell(balances, player, payee) {
+    if (!payee) return `<td class="zero">—</td>`;
+    const v = balances[player]?.[payee] || 0; // +debt, -credit
+    const cls = v > 0.005 ? "bad" : v < -0.005 ? "good" : "zero";
+    const display = v === 0 ? "£0.00" : `£${money(Math.abs(v))}`;
+    return `<td class="${cls}">${display}</td>`;
+  }
+
+  // ----------------------------
+  // Add session/payment actions
+  // ----------------------------
   document.getElementById("addSessionBtn").onclick = () => {
     const date = document.getElementById("sDate").value || "";
     const payer = document.getElementById("sPayer").value || "";
     const total = parseFloat(document.getElementById("sTotal").value || "0");
     const notes = document.getElementById("sNotes").value || "";
-    const attendees = getSelectedPlayers();
+
+    const attendees = [...document.querySelectorAll("#playersChecks input[type=checkbox]:checked")]
+      .map(cb => cb.value)
+      .filter(p => state.players.includes(p));
 
     if (!date) return toast("Pick a date");
-    if (!PAYEES.has(payer)) return toast("Payer must be VJ or Dhara");
+    if (!payer || !state.payees.includes(payer)) return toast("Pick a payer (payee)");
     if (!(total > 0)) return toast("Enter a valid total");
     if (!attendees.length) return toast("Tick who played");
 
     state.sessions.push({ id: uid(), date, payer, total, attendees, notes });
     saveState();
 
+    // reset (date defaults to current date)
     document.getElementById("sDate").value = todayISO();
     document.getElementById("sPayer").value = "";
     document.getElementById("sTotal").value = "";
     document.getElementById("sNotes").value = "";
-    clearSelectedPlayers();
+    document.querySelectorAll("#playersChecks input[type=checkbox]").forEach(cb => cb.checked = false);
 
-    renderTables();
+    renderAll();
     toast("Session added");
   };
 
@@ -436,7 +677,7 @@
     document.getElementById("sPayer").value = "";
     document.getElementById("sTotal").value = "";
     document.getElementById("sNotes").value = "";
-    clearSelectedPlayers();
+    document.querySelectorAll("#playersChecks input[type=checkbox]").forEach(cb => cb.checked = false);
     toast("Cleared");
   };
 
@@ -448,20 +689,21 @@
     const notes = document.getElementById("pNotes").value || "";
 
     if (!date) return toast("Pick a date");
-    if (!from) return toast("Select From");
-    if (!PAYEES.has(to)) return toast("To must be VJ or Dhara");
+    if (!from || !state.players.includes(from)) return toast("Select From");
+    if (!to || !state.payees.includes(to)) return toast("Select To (payee)");
     if (!(amount > 0)) return toast("Enter a valid amount");
 
     state.payments.push({ id: uid(), date, from, to, amount, notes });
     saveState();
 
+    // reset (date defaults to current date)
     document.getElementById("pDate").value = todayISO();
     document.getElementById("pFrom").value = "";
     document.getElementById("pTo").value = "";
     document.getElementById("pAmt").value = "";
     document.getElementById("pNotes").value = "";
 
-    renderTables();
+    renderAll();
     toast("Payment added");
   };
 
@@ -474,50 +716,300 @@
     toast("Cleared");
   };
 
-  document.getElementById("exportBtn").onclick = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "badminton-tracker-backup.json";
-    a.click();
-    URL.revokeObjectURL(url);
+  // ----------------------------
+  // Edit players/payees
+  // ----------------------------
+  document.getElementById("addPlayerBtn").onclick = () => {
+    const name = cleanName(document.getElementById("newPlayerName").value);
+    if (!name) return toast("Enter a name");
+    if (state.players.some(p => p.toLowerCase() === name.toLowerCase())) return toast("Player already exists");
+
+    state.players.push(name);
+    state.players = uniqueNames(state.players);
+
+    document.getElementById("newPlayerName").value = "";
+    saveState(); renderAll(); toast("Player added");
   };
 
-  document.getElementById("importBtn").onclick = async () => {
+  function removePlayer(name) {
+    if (!confirm(`Remove player "${name}"?`)) return;
+
+    // Remove from players
+    state.players = state.players.filter(p => p.toLowerCase() !== name.toLowerCase());
+
+    // Also remove from payees if present
+    state.payees = state.payees.filter(p => p.toLowerCase() !== name.toLowerCase());
+
+    // Clean sessions attendees + payer if payer removed
+    state.sessions = state.sessions
+      .map(s => ({
+        ...s,
+        attendees: Array.isArray(s.attendees) ? s.attendees.filter(a => state.players.includes(a)) : [],
+        payer: state.payees.includes(s.payer) ? s.payer : ""
+      }))
+      .filter(s => s.payer && (s.attendees?.length || 0) > 0); // drop sessions that no longer make sense
+
+    // Clean payments where from/to removed
+    state.payments = state.payments.filter(p =>
+      state.players.includes(p.from) && state.payees.includes(p.to)
+    );
+
+    // Ensure at least one payee
+    if (!state.payees.length) {
+      toast("No payees left — add a payee");
+    }
+
+    saveState(); renderAll(); toast("Player removed");
+  }
+
+  document.getElementById("addPayeeBtn").onclick = () => {
+    const p = document.getElementById("addPayeeSelect").value || "";
+    if (!p) return toast("Select a player");
+    if (!state.players.includes(p)) return toast("Payee must be a player");
+    if (state.payees.includes(p)) return toast("Already a payee");
+    state.payees.push(p);
+    state.payees = uniqueNames(state.payees).filter(x => state.players.includes(x));
+    saveState(); renderAll(); toast("Payee added");
+  };
+
+  function removePayee(name) {
+    if (!confirm(`Remove payee "${name}"?`)) return;
+
+    state.payees = state.payees.filter(p => p.toLowerCase() !== name.toLowerCase());
+
+    // Remove sessions where payer is no longer a payee
+    state.sessions = state.sessions.filter(s => state.payees.includes(s.payer));
+
+    // Remove payments where "to" is no longer a payee
+    state.payments = state.payments.filter(p => state.payees.includes(p.to));
+
+    if (!state.payees.length) {
+      toast("No payees left — add one (payer list will be empty)");
+    }
+
+    saveState(); renderAll(); toast("Payee removed");
+  }
+
+  // ----------------------------
+  // CSV Export / Import
+  // Single CSV with record types:
+  // CONFIG, PLAYER, PAYEE, SESSION, PAYMENT
+  // ----------------------------
+  document.getElementById("exportCsvBtn").onclick = () => {
+    const rows = [];
+    rows.push(["type","id","date","payer","total","attendees","notes","from","to","amount","name","version"]);
+
+    // CONFIG
+    rows.push(["CONFIG","","","","","","","","","","","1"]);
+
+    // PLAYERS
+    for (const p of state.players) rows.push(["PLAYER","","","","","","","","","","", "",].map((x,i)=> i===10 ? p : x));
+    // PAYEES
+    for (const p of state.payees) rows.push(["PAYEE","","","","","","","","","","", "",].map((x,i)=> i===10 ? p : x));
+
+    // SESSIONS
+    for (const s of state.sessions) {
+      rows.push([
+        "SESSION",
+        s.id || "",
+        s.date || "",
+        s.payer || "",
+        String(s.total ?? ""),
+        (Array.isArray(s.attendees) ? s.attendees.join(";") : ""),
+        s.notes || "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]);
+    }
+
+    // PAYMENTS
+    for (const p of state.payments) {
+      rows.push([
+        "PAYMENT",
+        p.id || "",
+        p.date || "",
+        "",
+        "",
+        "",
+        p.notes || "",
+        p.from || "",
+        p.to || "",
+        String(p.amount ?? ""),
+        "",
+        ""
+      ]);
+    }
+
+    const csv = toCsv(rows);
+    downloadText("badminton-tracker.csv", csv, "text/csv");
+  };
+
+  document.getElementById("importCsvBtn").onclick = async () => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "application/json";
+    input.accept = ".csv,text/csv";
     input.onchange = async () => {
-      const file = input.files[0];
+      const file = input.files?.[0];
       if (!file) return;
+
       const text = await file.text();
       try {
-        const parsed = JSON.parse(text);
-        if (!parsed.sessions || !parsed.payments) return toast("Invalid backup file");
-        state = parsed;
+        const imported = parseTrackerCsv(text);
+        state = imported;
         saveState();
-        renderTables();
-        toast("Imported");
-      } catch {
-        toast("Could not import file");
+        renderAll();
+        toast("CSV imported");
+      } catch (e) {
+        console.error(e);
+        toast("CSV import failed");
       }
     };
     input.click();
   };
 
+  function toCsv(rows) {
+    return rows.map(r => r.map(csvEscape).join(",")).join("\n");
+  }
+
+  function csvEscape(v) {
+    const s = String(v ?? "");
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  }
+
+  function downloadText(filename, content, mime) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function parseCsv(text) {
+    // Simple CSV parser (handles quotes)
+    const rows = [];
+    let i = 0, field = "", row = [], inQuotes = false;
+
+    while (i < text.length) {
+      const c = text[i];
+
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i+1] === '"') { field += '"'; i += 2; continue; }
+          inQuotes = false; i++; continue;
+        }
+        field += c; i++; continue;
+      }
+
+      if (c === '"') { inQuotes = true; i++; continue; }
+      if (c === ",") { row.push(field); field = ""; i++; continue; }
+      if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+      if (c === "\r") { i++; continue; }
+
+      field += c; i++;
+    }
+    row.push(field);
+    rows.push(row);
+
+    return rows.filter(r => r.some(x => String(x||"").trim() !== ""));
+  }
+
+  function parseTrackerCsv(text) {
+    const rows = parseCsv(text);
+    if (!rows.length) throw new Error("Empty CSV");
+
+    const header = rows[0].map(h => h.trim().toLowerCase());
+    const idx = (name) => header.indexOf(name);
+
+    if (idx("type") === -1) throw new Error("Missing type column");
+
+    const newState = defaultState();
+    newState.players = [];
+    newState.payees = [];
+    newState.sessions = [];
+    newState.payments = [];
+
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      const type = (row[idx("type")] || "").trim().toUpperCase();
+
+      if (type === "PLAYER") {
+        const name = cleanName(row[idx("name")] || "");
+        if (name) newState.players.push(name);
+      } else if (type === "PAYEE") {
+        const name = cleanName(row[idx("name")] || "");
+        if (name) newState.payees.push(name);
+      } else if (type === "SESSION") {
+        const s = {
+          id: cleanName(row[idx("id")] || uid()),
+          date: cleanName(row[idx("date")] || ""),
+          payer: cleanName(row[idx("payer")] || ""),
+          total: parseFloat(row[idx("total")] || "0"),
+          attendees: cleanName(row[idx("attendees")] || "").split(";").map(cleanName).filter(Boolean),
+          notes: row[idx("notes")] || ""
+        };
+        if (s.date && s.payer && s.total > 0) newState.sessions.push(s);
+      } else if (type === "PAYMENT") {
+        const p = {
+          id: cleanName(row[idx("id")] || uid()),
+          date: cleanName(row[idx("date")] || ""),
+          from: cleanName(row[idx("from")] || ""),
+          to: cleanName(row[idx("to")] || ""),
+          amount: parseFloat(row[idx("amount")] || "0"),
+          notes: row[idx("notes")] || ""
+        };
+        if (p.date && p.from && p.to && p.amount > 0) newState.payments.push(p);
+      }
+      // CONFIG rows are allowed but not required
+    }
+
+    newState.players = uniqueNames(newState.players);
+    if (!newState.players.length) newState.players = defaultState().players;
+
+    // Payees must be subset of players
+    newState.payees = uniqueNames(newState.payees).filter(p => newState.players.includes(p));
+    if (!newState.payees.length) newState.payees = defaultState().payees.filter(p => newState.players.includes(p));
+
+    // Clean sessions/payments against new players/payees
+    newState.sessions = newState.sessions
+      .map(s => ({
+        ...s,
+        attendees: (s.attendees || []).filter(a => newState.players.includes(a)),
+        payer: newState.payees.includes(s.payer) ? s.payer : ""
+      }))
+      .filter(s => s.payer && (s.attendees?.length || 0) > 0);
+
+    newState.payments = newState.payments
+      .filter(p => newState.players.includes(p.from) && newState.payees.includes(p.to));
+
+    return newState;
+  }
+
+  // ----------------------------
+  // Wipe
+  // ----------------------------
   document.getElementById("wipeBtn").onclick = () => {
     if (!confirm("Wipe ALL data on this device?")) return;
-    state = { sessions: [], payments: [] };
+    state = defaultState();
     saveState();
-    renderTables();
+    renderAll();
     toast("Wiped");
   };
 
-  document.getElementById("sDate").value = todayISO();
-  document.getElementById("pDate").value = todayISO();
-
-  renderTables();
+  // ----------------------------
+  // Init
+  // ----------------------------
+  document.addEventListener("DOMContentLoaded", () => {
+    // Set default dates to current date (requirement #5)
+    document.getElementById("sDate").value = todayISO();
+    document.getElementById("pDate").value = todayISO();
+    renderAll();
+  });
 </script>
 </body>
 </html>
