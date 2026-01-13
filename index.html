@@ -48,7 +48,7 @@
     .toast.show { display:block; }
     .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 
-    /* Static checkbox roster (no JS needed to display) */
+    /* Static checkbox roster */
     .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
     .check { display:flex; align-items:center; gap:10px; padding:10px; border-radius:12px; border:1px solid #2a3d6a; background:#0b1220; }
     .check input { width: 20px; height: 20px; }
@@ -154,7 +154,9 @@
 
   <section class="card" style="grid-column: 1 / -1;">
     <h2>Summary (what you actually care about)</h2>
-    <div class="muted">Positive means you owe money. Zero means settled. VJ↔Dhara is netted off automatically.</div>
+    <div class="muted">
+      “Total Owed” is the amount the player still needs to pay out (credits do not cancel other debts). VJ↔Dhara is netted off automatically.
+    </div>
 
     <table id="summaryTable">
       <thead>
@@ -221,7 +223,7 @@
 <script>
   const PLAYERS = ["VJ","Dhara","Neeta","Dipesh","Nitin","Niks","Paras"];
   const PAYEES = new Set(["VJ","Dhara"]);
-  const STORAGE_KEY = "badminton_tracker_v3"; // bump version to avoid old cached storage edge cases
+  const STORAGE_KEY = "badminton_tracker_v4";
 
   let state = loadState();
 
@@ -237,8 +239,8 @@
   }
   function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 
-  const money = (n) => (Math.round((n + Number.EPSILON)*100)/100).toFixed(2);
-  const todayISO = () => new Date().toISOString().slice(0,10);
+  const money = (n) => (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
+  const todayISO = () => new Date().toISOString().slice(0, 10);
 
   function toast(msg) {
     const t = document.getElementById("toast");
@@ -276,7 +278,6 @@
     // 2) Payments reduce what the person owes to that payee
     for (const pay of state.payments) {
       if (!PAYEES.has(pay.to)) continue;
-      if (!balances[pay.from]) balances[pay.from] = { VJ: 0, Dhara: 0 };
       balances[pay.from][pay.to] -= pay.amount;
     }
 
@@ -287,9 +288,7 @@
       }
     }
 
-    // 4) NET OFF between VJ and Dhara (so only one direction remains)
-    // balances["Dhara"]["VJ"] means "Dhara owes VJ"
-    // balances["VJ"]["Dhara"] means "VJ owes Dhara"
+    // 4) Net off between VJ and Dhara only
     const dhOwesVJ = balances["Dhara"]["VJ"] || 0;
     const vjOwesDh = balances["VJ"]["Dhara"] || 0;
     const net = dhOwesVJ - vjOwesDh; // +ve => Dhara owes VJ overall
@@ -308,6 +307,14 @@
     return balances;
   }
 
+  // Total owed should NOT be netted across different payees.
+  // Credits with one payee do not cancel debts to the other payee.
+  function totalOwedForPlayer(balances, player) {
+    const owesVJ = balances[player].VJ || 0;
+    const owesDh = balances[player].Dhara || 0;
+    return Math.max(0, owesVJ) + Math.max(0, owesDh);
+  }
+
   function renderTables() {
     const balances = computeBalances();
 
@@ -317,32 +324,33 @@
     for (const p of PLAYERS) {
       const owesVJ = balances[p].VJ;
       const owesDh = balances[p].Dhara;
-      const total = owesVJ + owesDh;
+      const total = totalOwedForPlayer(balances, p);
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${p}</td>
         <td class="${owesVJ>0?'neg':owesVJ<0?'pos':'zero'}">£${money(owesVJ)}</td>
         <td class="${owesDh>0?'neg':owesDh<0?'pos':'zero'}">£${money(owesDh)}</td>
-        <td class="${total>0?'neg':total<0?'pos':'zero'}">£${money(total)}</td>
+        <td class="${total>0?'neg':'zero'}">£${money(total)}</td>
       `;
       tbody.appendChild(tr);
     }
 
-    // Suggested next payer (most owing)
-    const totals = PLAYERS.map(p => ({ p, t: balances[p].VJ + balances[p].Dhara }));
+    // Suggested next payer (based on positive owed only)
+    const totals = PLAYERS.map(p => ({ p, t: totalOwedForPlayer(balances, p) }));
     const mostOwing = totals.filter(x => x.t > 0.005).sort((a,b)=> b.t - a.t)[0];
     document.getElementById("suggestPayer").textContent =
       mostOwing ? `${mostOwing.p} (£${money(mostOwing.t)})` : "—";
 
-    // Suggested collector (most owed: VJ or Dhara)
-    const owedToVJ = PLAYERS.reduce((acc,p)=> acc + (balances[p].VJ||0), 0);
-    const owedToDh = PLAYERS.reduce((acc,p)=> acc + (balances[p].Dhara||0), 0);
+    // Suggested collector (who is most owed overall)
+    // IMPORTANT: collectors should not get reduced by credits (negative balances).
+    const owedToVJ = PLAYERS.reduce((acc,p)=> acc + Math.max(0, balances[p].VJ||0), 0);
+    const owedToDh = PLAYERS.reduce((acc,p)=> acc + Math.max(0, balances[p].Dhara||0), 0);
     const collector = owedToVJ >= owedToDh ? {p:"VJ", t:owedToVJ} : {p:"Dhara", t:owedToDh};
     document.getElementById("suggestCollector").textContent =
-      (Math.abs(collector.t) > 0.005) ? `${collector.p} (£${money(collector.t)})` : "—";
+      (collector.t > 0.005) ? `${collector.p} (£${money(collector.t)})` : "—";
 
-    // Net line between VJ and Dhara
+    // Net line between VJ and Dhara (after netting)
     const dhOwesVJ = balances["Dhara"]["VJ"] || 0;
     const vjOwesDh = balances["VJ"]["Dhara"] || 0;
     let netText = "—";
@@ -413,7 +421,6 @@
     state.sessions.push({ id: uid(), date, payer, total, attendees, notes });
     saveState();
 
-    // reset
     document.getElementById("sDate").value = todayISO();
     document.getElementById("sPayer").value = "";
     document.getElementById("sTotal").value = "";
@@ -448,7 +455,6 @@
     state.payments.push({ id: uid(), date, from, to, amount, notes });
     saveState();
 
-    // reset
     document.getElementById("pDate").value = todayISO();
     document.getElementById("pFrom").value = "";
     document.getElementById("pTo").value = "";
@@ -508,7 +514,6 @@
     toast("Wiped");
   };
 
-  // Defaults
   document.getElementById("sDate").value = todayISO();
   document.getElementById("pDate").value = todayISO();
 
