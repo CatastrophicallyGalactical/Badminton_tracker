@@ -154,7 +154,8 @@
 
   <section class="card" style="grid-column: 1 / -1;">
     <h2>Summary (what you actually care about)</h2>
-    <div class="muted">Positive means you owe money. Zero means settled.</div>
+    <div class="muted">Positive means you owe money. Zero means settled. VJ↔Dhara is netted off automatically.</div>
+
     <table id="summaryTable">
       <thead>
         <tr>
@@ -179,6 +180,9 @@
         <div id="suggestCollector" style="font-size:18px; font-weight:800;">—</div>
       </div>
     </div>
+
+    <div class="sep"></div>
+    <div class="mini" id="vjDharaNetLine">Net between VJ ↔ Dhara: —</div>
   </section>
 
   <section class="card">
@@ -217,7 +221,7 @@
 <script>
   const PLAYERS = ["VJ","Dhara","Neeta","Dipesh","Nitin","Niks","Paras"];
   const PAYEES = new Set(["VJ","Dhara"]);
-  const STORAGE_KEY = "badminton_tracker_v2";
+  const STORAGE_KEY = "badminton_tracker_v3"; // bump version to avoid old cached storage edge cases
 
   let state = loadState();
 
@@ -243,9 +247,7 @@
     setTimeout(() => t.classList.remove("show"), 1800);
   }
 
-  function uid() {
-    return String(Date.now()) + "_" + Math.random().toString(16).slice(2);
-  }
+  function uid() { return String(Date.now()) + "_" + Math.random().toString(16).slice(2); }
 
   function getSelectedPlayers() {
     return [...document.querySelectorAll("#playersChecks input[type=checkbox]:checked")].map(x => x.value);
@@ -258,6 +260,7 @@
     const balances = {};
     for (const p of PLAYERS) balances[p] = { VJ: 0, Dhara: 0 };
 
+    // 1) Sessions create debt from each attendee (except payer) to payer
     for (const s of state.sessions) {
       if (!PAYEES.has(s.payer)) continue;
       const attendees = s.attendees || [];
@@ -270,16 +273,38 @@
       }
     }
 
+    // 2) Payments reduce what the person owes to that payee
     for (const pay of state.payments) {
       if (!PAYEES.has(pay.to)) continue;
+      if (!balances[pay.from]) balances[pay.from] = { VJ: 0, Dhara: 0 };
       balances[pay.from][pay.to] -= pay.amount;
     }
 
+    // 3) Clamp tiny float noise
     for (const p of PLAYERS) {
       for (const payee of ["VJ","Dhara"]) {
         if (Math.abs(balances[p][payee]) < 0.005) balances[p][payee] = 0;
       }
     }
+
+    // 4) NET OFF between VJ and Dhara (so only one direction remains)
+    // balances["Dhara"]["VJ"] means "Dhara owes VJ"
+    // balances["VJ"]["Dhara"] means "VJ owes Dhara"
+    const dhOwesVJ = balances["Dhara"]["VJ"] || 0;
+    const vjOwesDh = balances["VJ"]["Dhara"] || 0;
+    const net = dhOwesVJ - vjOwesDh; // +ve => Dhara owes VJ overall
+
+    if (Math.abs(net) < 0.005) {
+      balances["Dhara"]["VJ"] = 0;
+      balances["VJ"]["Dhara"] = 0;
+    } else if (net > 0) {
+      balances["Dhara"]["VJ"] = net;
+      balances["VJ"]["Dhara"] = 0;
+    } else {
+      balances["VJ"]["Dhara"] = -net;
+      balances["Dhara"]["VJ"] = 0;
+    }
+
     return balances;
   }
 
@@ -304,18 +329,26 @@
       tbody.appendChild(tr);
     }
 
-    // Suggested next payer
+    // Suggested next payer (most owing)
     const totals = PLAYERS.map(p => ({ p, t: balances[p].VJ + balances[p].Dhara }));
     const mostOwing = totals.filter(x => x.t > 0.005).sort((a,b)=> b.t - a.t)[0];
     document.getElementById("suggestPayer").textContent =
       mostOwing ? `${mostOwing.p} (£${money(mostOwing.t)})` : "—";
 
-    // Suggested collector
+    // Suggested collector (most owed: VJ or Dhara)
     const owedToVJ = PLAYERS.reduce((acc,p)=> acc + (balances[p].VJ||0), 0);
     const owedToDh = PLAYERS.reduce((acc,p)=> acc + (balances[p].Dhara||0), 0);
     const collector = owedToVJ >= owedToDh ? {p:"VJ", t:owedToVJ} : {p:"Dhara", t:owedToDh};
     document.getElementById("suggestCollector").textContent =
       (Math.abs(collector.t) > 0.005) ? `${collector.p} (£${money(collector.t)})` : "—";
+
+    // Net line between VJ and Dhara
+    const dhOwesVJ = balances["Dhara"]["VJ"] || 0;
+    const vjOwesDh = balances["VJ"]["Dhara"] || 0;
+    let netText = "—";
+    if (dhOwesVJ > 0.005) netText = `Dhara owes VJ £${money(dhOwesVJ)}`;
+    else if (vjOwesDh > 0.005) netText = `VJ owes Dhara £${money(vjOwesDh)}`;
+    document.getElementById("vjDharaNetLine").textContent = `Net between VJ ↔ Dhara: ${netText}`;
 
     // Sessions
     const sbody = document.querySelector("#sessionsTable tbody");
